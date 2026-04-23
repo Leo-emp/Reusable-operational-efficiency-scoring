@@ -1,0 +1,8 @@
+case_id,case_date,process_step,step_number,department,employee_id,priority,complexity,case_value,wait_time_min,cycle_time_min,total_time_min,start_time,end_time,error_count,rework_count,month,day_of_week
+ORD-0001,2025-03-15,Order Received,1,Sales,EMP_S01,Standard,3,1250.00,0.0,12.5,12.5,2025-03-15 09:00,2025-03-15 09:12,0,0,3,Saturday
+ORD-0001,2025-03-15,Order Validation,2,Operations,EMP_O02,Standard,3,1250.00,8.0,18.3,26.3,2025-03-15 09:20,2025-03-15 09:39,0,0,3,Saturday
+ORD-0001,2025-03-15,Inventory Check,3,Warehouse,EMP_W01,Standard,3,1250.00,42.0,22.0,64.0,2025-03-15 10:21,2025-03-15 10:43,1,0,3,Saturday
+ORD-0001,2025-03-15,Picking & Packing,4,Warehouse,EMP_W04,Standard,3,1250.00,35.0,50.0,85.0,2025-03-15 11:18,2025-03-15 12:08,0,0,3,Saturday
+ORD-0001,2025-03-15,Quality Inspection,5,Quality,EMP_Q01,Standard,3,1250.00,20.0,15.0,35.0,2025-03-15 12:28,2025-03-15 12:43,0,0,3,Saturday
+ORD-0001,2025-03-15,Shipping Preparation,6,Logistics,EMP_L02,Standard,3,1250.00,10.0,12.0,22.0,2025-03-15 12:53,2025-03-15 13:05,0,0,3,Saturday
+ORD-0001,2025-03-15,Dispatch & Delivery,7,Logistics,EMP_L03,Standard,3,1250.00,15.0,180.0,195.0,2025-03-15 13:20,2025-03-15 16:20,0,0,3,Saturday
