@@ -1,0 +1,5 @@
+{
+  "name": "Customer Service Pipeline",
+  "type": "customer-service",
+  "description": "Support ticket lifecycle from creation to resolution"
+}
