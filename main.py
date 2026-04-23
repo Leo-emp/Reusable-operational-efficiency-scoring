@@ -50,6 +50,10 @@ from sklearn.metrics import mean_absolute_error, r2_score  # Measure prediction 
 from sklearn.preprocessing import LabelEncoder      # Convert text labels to numbers
 
 from fpdf import FPDF               # PDF report generation
+from pptx import Presentation       # PowerPoint slide generation
+from pptx.util import Inches, Pt, Emu  # Size units for slides
+from pptx.dml.color import RGBColor    # Colors for slide elements
+from pptx.enum.text import PP_ALIGN    # Text alignment options
 
 # Suppress warnings that clutter the output
 warnings.filterwarnings("ignore")
@@ -1017,6 +1021,370 @@ def generate_pdf_report(
 
 
 # ============================================================
+# SECTION 8: GENERATE POWERPOINT PRESENTATION
+# ============================================================
+
+def generate_presentation(
+    step_stats: pd.DataFrame,
+    bottlenecks: list[dict],
+    recommendations: str,
+    predictions: dict,
+    output_path: str = "reports/operational_efficiency_presentation.pptx",
+    pipeline_name: str = "Operations Pipeline"
+):
+    """
+    Creates a professional PowerPoint presentation with all findings.
+
+    Slides:
+        1. Title slide
+        2. Executive summary with key metrics
+        3. Efficiency scores overview
+        4. Chart: Efficiency scores bar chart
+        5. Chart: Cycle time vs wait time
+        6. Bottleneck analysis (one slide per bottleneck)
+        7. Chart: Error and rework rates
+        8. Chart: Monthly trend
+        9. Recommendations
+        10. Performance predictions
+        11. Chart: Prediction analysis
+        12. Next steps / closing
+
+    Args:
+        step_stats: Efficiency scores DataFrame.
+        bottlenecks: List of bottleneck dictionaries.
+        recommendations: Recommendations text.
+        predictions: Prediction results dictionary.
+        output_path: Where to save the .pptx file.
+        pipeline_name: Name of the pipeline for the title.
+    """
+    print("=" * 70)
+    print("SECTION 8: GENERATING PRESENTATION")
+    print("=" * 70)
+    print()
+
+    # Make sure the output directory exists
+    Path(output_path).parent.mkdir(exist_ok=True)
+
+    # Create a new presentation (widescreen 16:9)
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    # --- Color scheme ---
+    # These colors are used throughout the slides for consistency
+    COLOR_DARK = RGBColor(44, 62, 80)       # Dark blue-gray (titles)
+    COLOR_ACCENT = RGBColor(41, 128, 185)   # Blue (highlights)
+    COLOR_RED = RGBColor(231, 76, 60)       # Red (problems)
+    COLOR_GREEN = RGBColor(46, 204, 113)    # Green (good scores)
+    COLOR_ORANGE = RGBColor(243, 156, 18)   # Orange (warnings)
+    COLOR_WHITE = RGBColor(255, 255, 255)   # White (text on dark bg)
+    COLOR_LIGHT_BG = RGBColor(236, 240, 241)  # Light gray (backgrounds)
+
+    # ---- Helper functions for creating slides ----
+
+    def add_title_and_content_slide(title_text, bullet_points, subtitle_text=None):
+        """Creates a slide with a title and bullet points."""
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+        # Title background bar
+        from pptx.util import Emu
+        shape = slide.shapes.add_shape(
+            1, Inches(0), Inches(0), prs.slide_width, Inches(1.4)
+        )
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = COLOR_DARK
+        shape.line.fill.background()
+
+        # Title text
+        txBox = slide.shapes.add_textbox(Inches(0.8), Inches(0.2), Inches(11), Inches(1))
+        tf = txBox.text_frame
+        p = tf.paragraphs[0]
+        p.text = title_text
+        p.font.size = Pt(32)
+        p.font.color.rgb = COLOR_WHITE
+        p.font.bold = True
+
+        # Subtitle if provided
+        if subtitle_text:
+            txBox2 = slide.shapes.add_textbox(Inches(0.8), Inches(0.85), Inches(11), Inches(0.5))
+            tf2 = txBox2.text_frame
+            p2 = tf2.paragraphs[0]
+            p2.text = subtitle_text
+            p2.font.size = Pt(16)
+            p2.font.color.rgb = COLOR_LIGHT_BG
+
+        # Bullet points
+        if bullet_points:
+            txBox3 = slide.shapes.add_textbox(Inches(0.8), Inches(1.8), Inches(11.5), Inches(5))
+            tf3 = txBox3.text_frame
+            tf3.word_wrap = True
+
+            for i, point in enumerate(bullet_points):
+                if i == 0:
+                    p = tf3.paragraphs[0]
+                else:
+                    p = tf3.add_paragraph()
+                p.text = point
+                p.font.size = Pt(18)
+                p.font.color.rgb = COLOR_DARK
+                p.space_after = Pt(12)
+
+        return slide
+
+    def add_chart_slide(title_text, chart_path, subtitle_text=None):
+        """Creates a slide with a title and a chart image."""
+        slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+        # Title background bar
+        shape = slide.shapes.add_shape(
+            1, Inches(0), Inches(0), prs.slide_width, Inches(1.2)
+        )
+        shape.fill.solid()
+        shape.fill.fore_color.rgb = COLOR_DARK
+        shape.line.fill.background()
+
+        # Title text
+        txBox = slide.shapes.add_textbox(Inches(0.8), Inches(0.15), Inches(11), Inches(1))
+        tf = txBox.text_frame
+        p = tf.paragraphs[0]
+        p.text = title_text
+        p.font.size = Pt(28)
+        p.font.color.rgb = COLOR_WHITE
+        p.font.bold = True
+
+        # Chart image (centered, large)
+        if Path(chart_path).exists():
+            slide.shapes.add_picture(chart_path, Inches(0.8), Inches(1.5), Inches(11.5), Inches(5.5))
+
+        return slide
+
+    # ==============================
+    # SLIDE 1: Title Slide
+    # ==============================
+    print("  Creating Slide 1: Title...")
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # Blank layout
+
+    # Full-slide dark background
+    bg_shape = slide.shapes.add_shape(
+        1, Inches(0), Inches(0), prs.slide_width, prs.slide_height
+    )
+    bg_shape.fill.solid()
+    bg_shape.fill.fore_color.rgb = COLOR_DARK
+    bg_shape.line.fill.background()
+
+    # Accent bar at the top
+    accent_bar = slide.shapes.add_shape(
+        1, Inches(0), Inches(0), prs.slide_width, Inches(0.08)
+    )
+    accent_bar.fill.solid()
+    accent_bar.fill.fore_color.rgb = COLOR_ACCENT
+    accent_bar.line.fill.background()
+
+    # Main title
+    txBox = slide.shapes.add_textbox(Inches(1.5), Inches(2), Inches(10), Inches(1.5))
+    tf = txBox.text_frame
+    p = tf.paragraphs[0]
+    p.text = "Operational Efficiency"
+    p.font.size = Pt(44)
+    p.font.color.rgb = COLOR_WHITE
+    p.font.bold = True
+    p.alignment = PP_ALIGN.CENTER
+
+    p2 = tf.add_paragraph()
+    p2.text = "Analysis Report"
+    p2.font.size = Pt(44)
+    p2.font.color.rgb = COLOR_ACCENT
+    p2.font.bold = True
+    p2.alignment = PP_ALIGN.CENTER
+
+    # Pipeline name
+    txBox2 = slide.shapes.add_textbox(Inches(1.5), Inches(4), Inches(10), Inches(0.8))
+    tf2 = txBox2.text_frame
+    p3 = tf2.paragraphs[0]
+    p3.text = pipeline_name
+    p3.font.size = Pt(22)
+    p3.font.color.rgb = COLOR_LIGHT_BG
+    p3.alignment = PP_ALIGN.CENTER
+
+    # Date
+    txBox3 = slide.shapes.add_textbox(Inches(1.5), Inches(5.5), Inches(10), Inches(0.5))
+    tf3 = txBox3.text_frame
+    p4 = tf3.paragraphs[0]
+    p4.text = f"Prepared: {pd.Timestamp.now().strftime('%B %d, %Y')}"
+    p4.font.size = Pt(16)
+    p4.font.color.rgb = COLOR_LIGHT_BG
+    p4.alignment = PP_ALIGN.CENTER
+
+    # ==============================
+    # SLIDE 2: Executive Summary
+    # ==============================
+    print("  Creating Slide 2: Executive Summary...")
+    overall_score = round(step_stats["efficiency_score"].mean(), 1)
+    total_records = int(step_stats["total_orders"].sum())
+    num_bottlenecks = len(bottlenecks)
+
+    # Determine overall grade for the headline
+    if overall_score >= 80:
+        overall_grade = "EXCELLENT"
+    elif overall_score >= 65:
+        overall_grade = "GOOD"
+    elif overall_score >= 50:
+        overall_grade = "NEEDS IMPROVEMENT"
+    else:
+        overall_grade = "CRITICAL"
+
+    summary_bullets = [
+        f"Overall System Efficiency Score: {overall_score}/100 ({overall_grade})",
+        f"Total Records Analyzed: {total_records:,}",
+        f"Critical Bottlenecks Identified: {num_bottlenecks}",
+        "",
+        f"Current Avg Processing Time: {predictions['current_avg_time']:.1f} min/step",
+        f"Projected Improved Time: {predictions['improved_avg_time']:.1f} min/step",
+        f"Expected Improvement: {predictions['improvement_pct']:.1f}%",
+        "",
+        f"ML Model Accuracy (R2): {predictions['model_r2']:.3f}",
+    ]
+
+    add_title_and_content_slide("Executive Summary", summary_bullets, "Key findings at a glance")
+
+    # ==============================
+    # SLIDE 3: Efficiency Scores Table
+    # ==============================
+    print("  Creating Slide 3: Efficiency Scores...")
+    score_bullets = []
+    for _, row in step_stats.sort_values("step_number").iterrows():
+        score = row["efficiency_score"]
+        grade = row["grade"]
+        # Add a visual indicator
+        if score >= 80:
+            indicator = "[EXCELLENT]"
+        elif score >= 65:
+            indicator = "[GOOD]"
+        elif score >= 50:
+            indicator = "[OK]"
+        elif score >= 35:
+            indicator = "[POOR]"
+        else:
+            indicator = "[CRITICAL]"
+        score_bullets.append(f"{row['process_step']}: {score:.0f}/100 {indicator}")
+
+    score_bullets.append("")
+    score_bullets.append(f"System Average: {overall_score}/100")
+
+    add_title_and_content_slide("Efficiency Scores by Process Step", score_bullets, "Scored on cycle time, wait time, errors, and rework")
+
+    # ==============================
+    # SLIDE 4-6: Charts
+    # ==============================
+    print("  Creating Slide 4: Efficiency Scores Chart...")
+    add_chart_slide("Efficiency Scores Overview", "charts/1_efficiency_scores.png")
+
+    print("  Creating Slide 5: Cycle Time vs Wait Time...")
+    add_chart_slide("Cycle Time vs Wait Time Analysis", "charts/2_cycle_vs_wait.png")
+
+    print("  Creating Slide 6: Error & Rework Rates...")
+    add_chart_slide("Error and Rework Rates", "charts/3_error_rework_rates.png")
+
+    # ==============================
+    # SLIDE 7: Bottleneck Analysis
+    # ==============================
+    print("  Creating Slide 7: Bottleneck Analysis...")
+    if bottlenecks:
+        bn_bullets = []
+        for i, bn in enumerate(bottlenecks, 1):
+            bn_bullets.append(f"BOTTLENECK #{i}: {bn['step']} ({bn['department']})")
+            bn_bullets.append(f"   Score: {bn['efficiency_score']} | Grade: {bn['grade']}")
+            for issue in bn["issues"]:
+                bn_bullets.append(f"   - {issue}")
+            bn_bullets.append("")
+
+        add_title_and_content_slide("Bottleneck Analysis", bn_bullets, f"{num_bottlenecks} critical bottleneck(s) identified")
+    else:
+        add_title_and_content_slide("Bottleneck Analysis", ["No critical bottlenecks found - all steps scoring above 50."])
+
+    # ==============================
+    # SLIDE 8: Monthly Trend
+    # ==============================
+    print("  Creating Slide 8: Monthly Trend...")
+    add_chart_slide("Monthly Performance Trend", "charts/4_monthly_trend.png")
+
+    # ==============================
+    # SLIDE 9: Department Heatmap
+    # ==============================
+    print("  Creating Slide 9: Department Heatmap...")
+    add_chart_slide("Department Performance Heatmap", "charts/5_department_heatmap.png")
+
+    # ==============================
+    # SLIDE 10: Recommendations
+    # ==============================
+    print("  Creating Slide 10: Recommendations...")
+    # Split recommendations into bullet points (take first 12 meaningful lines)
+    rec_lines = [line.strip() for line in recommendations.split("\n") if line.strip()]
+    # Filter to actionable lines only
+    rec_bullets = []
+    for line in rec_lines:
+        if line.startswith("-") or line.startswith("*"):
+            rec_bullets.append(line)
+        elif "Issue:" in line or "Score:" in line:
+            rec_bullets.append(line)
+        elif line.startswith("---"):
+            rec_bullets.append("")
+            rec_bullets.append(line.replace("---", "").strip())
+    # Limit to 12 items to fit on one slide
+    rec_bullets = rec_bullets[:12]
+    if not rec_bullets:
+        rec_bullets = ["See PDF report for detailed recommendations."]
+
+    add_title_and_content_slide("Recommendations", rec_bullets, "Proposed improvements to address bottlenecks")
+
+    # ==============================
+    # SLIDE 11: Performance Predictions
+    # ==============================
+    print("  Creating Slide 11: Predictions...")
+    pred_bullets = [
+        f"Prediction Model: Random Forest (100 trees)",
+        f"Model Accuracy: R2 = {predictions['model_r2']:.3f}, MAE = {predictions['model_mae']:.1f} min",
+        "",
+        "CURRENT SYSTEM:",
+        f"   Average processing time: {predictions['current_avg_time']:.1f} min/step",
+        "",
+        "IMPROVED SYSTEM (after fixing bottlenecks):",
+        f"   Projected processing time: {predictions['improved_avg_time']:.1f} min/step",
+        "",
+        f"EXPECTED IMPROVEMENT: {predictions['improvement_pct']:.1f}%",
+    ]
+
+    add_title_and_content_slide("Performance Predictions", pred_bullets, "ML-powered forecasting")
+
+    # ==============================
+    # SLIDE 12: Prediction Chart
+    # ==============================
+    print("  Creating Slide 12: Prediction Chart...")
+    add_chart_slide("Current vs Improved Performance", "charts/6_prediction_analysis.png")
+
+    # ==============================
+    # SLIDE 13: Next Steps / Closing
+    # ==============================
+    print("  Creating Slide 13: Next Steps...")
+    next_steps = [
+        "1. Address critical bottlenecks immediately (F-grade steps)",
+        "2. Implement quick wins: checklists, priority queues, SOPs",
+        "3. Invest in automation for high-error steps",
+        "4. Re-run analysis monthly to track improvement",
+        "5. Set target: raise system score from {:.0f} to 75+ within 6 months".format(overall_score),
+        "",
+        "Contact: Generated by Operational Efficiency Scoring System",
+    ]
+
+    add_title_and_content_slide("Next Steps", next_steps, "Recommended action plan")
+
+    # --- Save the presentation ---
+    prs.save(output_path)
+    print(f"  Presentation saved to: {output_path}")
+    print()
+
+
+# ============================================================
 # MAIN - Entry point that runs everything
 # ============================================================
 
@@ -1088,6 +1456,12 @@ def main():
     # Step 7: Generate PDF report
     generate_pdf_report(step_stats, bottlenecks, recommendations, predictions, args.output, pipeline_name)
 
+    # Step 8: Generate PowerPoint presentation
+    pptx_path = args.output.replace(".pdf", ".pptx")
+    if not pptx_path.endswith(".pptx"):
+        pptx_path = "reports/operational_efficiency_presentation.pptx"
+    generate_presentation(step_stats, bottlenecks, recommendations, predictions, pptx_path, pipeline_name)
+
     # --- Final summary ---
     print("=" * 70)
     print("ANALYSIS COMPLETE")
@@ -1097,6 +1471,7 @@ def main():
     print(f"  Bottlenecks Found: {len(bottlenecks)}")
     print(f"  Expected Improvement: {predictions['improvement_pct']:.1f}%")
     print(f"  PDF Report: {args.output}")
+    print(f"  Presentation: {pptx_path}")
     print(f"  Charts: charts/")
     print()
 
